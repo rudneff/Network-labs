@@ -1,0 +1,34 @@
+graph G {
+edge [len=1.5];
+node [shape=diamond, color="green"];
+r1 [color="blue"];
+r2 [color="blue"];
+r3 [color="blue"];
+r4 [color="blue"];
+ws1;
+ws2;
+ws3;
+node [shape=ellipse, color="brown"];
+lan5 [label="192.168.5.0/24"];
+lan3 [label="192.168.3.0/24"];
+lan2 [label="192.168.2.0/24"];
+lan1 [label="192.168.1.0/24"];
+lan3 [label="192.168.3.0/24"];
+lan1 [label="192.168.1.0/24"];
+lan4 [label="192.168.4.0/24"];
+lan2 [label="192.168.2.0/24"];
+lan3 [label="192.168.3.0/24"];
+lan5 [label="192.168.5.0/24"];
+lan4 [label="192.168.4.0/24"];
+r1 -- lan2 [label="eth1: 192.168.2.1", color="gray"];
+r1 -- lan1 [label="eth0: 192.168.1.1", color="gray"];
+r2 -- lan3 [label="eth1: 192.168.3.1", color="gray"];
+r2 -- lan1 [label="eth0: 192.168.1.2", color="gray"];
+r3 -- lan4 [label="eth1: 192.168.4.1", color="gray"];
+r3 -- lan2 [label="eth0: 192.168.2.2", color="gray"];
+r4 -- lan5 [label="eth1: 192.168.5.1", color="gray"];
+r4 -- lan3 [label="eth0: 192.168.3.2", color="gray"];
+ws1 -- lan3 [label="eth0: 192.168.3.3", color="gray"];
+ws2 -- lan4 [label="eth0: 192.168.4.2", color="gray"];
+ws3 -- lan5 [label="eth0: 192.168.5.2", color="gray"];
+}

@@ -1,0 +1,415 @@
+#!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
+
+#from __future__ import with_statement
+
+import sys
+import os
+import re
+import os
+import os.path
+from collections import defaultdict
+import unittest
+import functools
+from tempfile import NamedTemporaryFile
+
+from netaddr.ip import IPNetwork
+
+# TODO: Не проверяет совпадение IP-адресов (разных машин)! Грабли популярны.
+# TODO: Не проверяет (ложное) совпадение gateway с  *нашим* же адресом. Грабли тоже популярны ))
+# TODO: Интересно, а как вообще проверяется тогда gateway? ))
+
+class LabConfigError(RuntimeError):
+    pass
+
+def host_in_network(host_ip, net_addr, net_mask):
+    network = IPNetwork('%s/%s' % (net_addr, net_mask))
+    addr = IPNetwork(host_ip)
+    return addr in network
+
+
+def strip_comments(f):
+    return [l.split("#")[0] for l in f.readlines()]
+
+
+def set_ip(r, iface, ip, netmask):
+    if ip != "":
+        n = IPNetwork("%s/%s" % (ip, netmask))
+        cidr = str(n.cidr)
+        if 'cidr' not in r[iface]['net']:
+            r[iface]['net']['cidr'] = cidr
+        elif r[iface]['net']['cidr'] != cidr:
+            raise LabConfigError("Network %s (%s) cannot contain IP %s" %
+                                 (r[iface]['net']['name'], r[iface]['net']['cidr'], ip))
+    else:
+        ip = r[iface]['net']['cidr']
+    r[iface]['ip'] = ip
+
+
+re_lab_tap = re.compile("\s*(\w+)\[(\d+)\]\s*=\s*tap,\S+,(\S+)\s*")
+re_lab = re.compile("\s*(\w+)\[(\d+)\]\s*=\s*(\w+)\s*")
+
+
+def read_lab(lab_dir):
+    routers = {}
+    networks = {}
+
+    def set_iface(r, iface, net):
+        if r not in routers:
+            routers[r] = {}
+        if net not in networks:
+            networks[net] = {'name': net}
+        routers[r][iface] = {'net': networks[net]}
+
+    def set_tap_iface(r, iface, ip):
+        set_iface(r, iface, "tap")
+        set_ip(routers[r], iface, ip, "255.255.0.0")
+
+    with open(os.path.join(lab_dir, "lab.conf"), "r") as lab:
+        for l in strip_comments(lab):
+            m = re_lab_tap.match(l)
+            if m:
+                set_tap_iface(m.group(1), "eth" + m.group(2), m.group(3))
+                continue
+            m = re_lab.match(l)
+            if m:
+                set_iface(m.group(1), "eth" + m.group(2), m.group(3))
+                continue
+    return routers
+
+
+re_iface = re.compile("\s*iface\s+(\w+)\s+inet\s+(\w+)\.*")
+re_addr = re.compile("\s*address\s+(\S+)\s*")
+re_gateway = re.compile("\s*gateway\s+(\S+)\s*")
+re_netmask = re.compile("\s*netmask\s+(\S+)\s*")
+
+
+def read_networks(iface_file):
+    ips = {}
+    netmasks = {}
+    gateways = {}
+    up_routes = defaultdict(set)  # set of routes (route == network)
+    down_routes = defaultdict(set)
+
+
+    def interface_processing_ended(iface, iface_type):
+        if iface != None and iface_type == "dhcp":
+            if iface not in ips:
+                ips[iface] = ""
+            if iface not in netmasks:
+                netmasks[iface] = ""
+
+        if iface in up_routes or iface in down_routes:
+            unclosed_routes = up_routes[iface] - down_routes[iface]
+            if unclosed_routes:
+                raise LabConfigError("Following static routes are added on 'up' but no removed on 'down': %s in %s" % (unclosed_routes, iface_file))
+
+        if iface in ips and iface in netmasks and iface in gateways:
+            if not host_in_network(gateways[iface], ips[iface], netmasks[iface]):
+                raise LabConfigError("Gateway %(gate)s does not belong to %(ip)s/%(mask)s network for interface %(face)s in %(file)s" % {
+                    'gate': gateways[iface],
+                    'ip': ips[iface],
+                    'mask': netmasks[iface],
+                    'face': iface,
+                    'file': iface_file,
+                })
+
+
+    with open(iface_file, "r") as f:
+        iface = None
+        iface_type = None
+        for l in strip_comments(f):
+            mi = re_iface.match(l)
+            if mi:
+                interface_processing_ended(iface, iface_type)
+                iface = mi.group(1)
+                iface_type = mi.group(2)
+
+            ma = re_addr.match(l)
+            if ma:
+                if not iface:
+                    raise LabConfigError("Address line without interface in %s" % iface_file)
+                elif iface_type == "dhcp":
+                    print >>sys.stderr, "Address line for DHCP interface in %s - ignored" % iface_file
+                elif iface in ips:
+                    raise LabConfigError("Address for interface %s specified twice in %s" % (iface_file, iface))
+                else:
+                    ips[iface] = ma.group(1)
+
+            mn = re_netmask.match(l)
+            if mn:
+                if not iface:
+                    raise LabConfigError("Netmask line without interface in %s" % iface_file)
+                elif iface_type == "dhcp":
+                    print >>sys.stderr, "Netmask line for DHCP interface in %s - ignored" % iface_file
+                elif iface in netmasks:
+                    raise LabConfigError("Netmask for interface %s specified twice in %s" % (iface_file, iface))
+                else:
+                    netmasks[iface] = mn.group(1)
+
+            mg = re_gateway.match(l)
+            if mg:
+                if not iface:
+                    raise LabConfigError("Gateway line without interface in %s" % iface_file)
+                elif iface_type == "dhcp":
+                    print >>sys.stderr, "Gateway line for DHCP interface in %s - ignored" % iface_file
+                elif iface in gateways:
+                    raise LabConfigError("Gateway for interface %s specified twice in %s" % (iface_file, iface))
+                else:
+                    gateways[iface] = mg.group(1)
+
+            if l.strip().startswith('up '):
+                example = "up ip route add 10.20.0.0/16 via 10.100.0.12 dev eth1"
+                cmd = [part.strip() for part in l.strip().split(' ')[1:]]
+                if not iface or iface not in netmasks or iface not in ips:
+                    raise LabConfigError("`up` command encountered before an interface with address and netmask was defined in %s" % iface_file)
+                m = re.match('ip r(oute)? add ([0-9\.\/]+) via ([0-9\.\/]+) dev (\w+)', ' '.join(cmd))
+                if not m:
+                    raise LabConfigError("%s: Only `ip route add` commands are allowed in `up` clause. Check your syntax. Example: %s" % (iface_file, example))
+                _, route_addr, route_gate, route_dev = m.groups()
+                if route_dev != iface:
+                    raise LabConfigError("%s: Static route to %s is added for interface %s instead of %s" % (iface_file, route_addr, route_dev, iface))
+                if not host_in_network(route_gate, ips[iface], netmasks[iface]):
+                    raise LabConfigError("%s: Gateway for static route to %s must belong to the same network as the interface" % (iface_file, route_addr))
+
+                up_routes[iface].add(route_addr)
+
+
+            if l.strip().startswith('down '):
+                example = "down ip route del 10.20.0.0/16"
+                cmd = [part.strip() for part in l.strip().split(' ')[1:]]
+                if not iface or iface not in netmasks or iface not in ips:
+                    raise LabConfigError("`down` command encountered before an interface with address and netmask was defined in %s" % iface_file)
+                m = re.match('ip r(oute)? del ([0-9\.\/]+)', ' '.join(cmd))
+                if not m:
+                    raise LabConfigError("%s: Only `ip route del` commands are allowed in `down` clause. Check your syntax. Example: %s" % (iface_file, example))
+                _, route_addr = m.groups()
+                if route_addr not in up_routes[iface]:
+                    raise LabConfigError("%s: Static route to %s is deleted but has not been added. Place `ip route del` commands after corresponding `ip route add` commands." % (iface_file, route_addr))
+                down_routes[iface].add(route_addr)
+
+
+
+        interface_processing_ended(iface, iface_type)
+    return ips, netmasks
+
+
+def expectedException(exc_class):
+    def decorator(f):
+        @functools.wraps(f)
+        def inner(*a, **kwa):
+            try:
+                f(*a, **kwa)
+            except exc_class:
+                pass
+            else:
+                raise unittest.case._UnexpectedSuccess()
+        return inner
+    return decorator
+
+
+class TestInterfacesParsing(unittest.TestCase):
+    def parse(self, text):
+        f = NamedTemporaryFile(delete=False)
+        f.write(text)
+        f.close()
+        try:
+            return read_networks(f.name)
+        finally:
+            os.unlink(f.name)
+
+    def test_okay(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            address 10.X.0.Y
+            netmask 255.255.0.0
+        """)
+
+    @expectedException(LabConfigError)
+    def test_sudden_up(self):
+        self.parse("""
+            up ip route add 10.20.0.0/16 via 10.100.0.12 dev eth1
+            auto eth1
+        """)
+
+    @expectedException(LabConfigError)
+    def test_up_without_netmask_or_address(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            up ip route add 10.20.0.0/16 via 10.100.0.12 dev eth1
+        """)
+
+    @expectedException(LabConfigError)
+    def test_up_without_down(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            address 10.10.0.6
+            netmask 255.255.0.0
+            up ip route add 10.20.0.0/16 via 10.100.0.12 dev eth1
+        """)
+
+    def test_up_with_down_okay(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            address 10.10.0.6
+            netmask 255.255.0.0
+            up ip route add 10.20.0.0/16 via 10.10.0.12 dev eth1
+            down ip route del 10.20.0.0/16
+        """)
+
+    @expectedException(LabConfigError)
+    def test_down_without_up(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            address 10.10.0.6
+            netmask 255.255.0.0
+            #up ip route add 10.20.0.0/16 via 10.10.0.12 dev eth1
+            down ip route del 10.20.0.0/16
+        """)
+
+    @expectedException(LabConfigError)
+    def test_down_of_different_route(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            address 10.10.0.6
+            netmask 255.255.0.0
+            up ip route add 10.20.0.0/16 via 10.10.0.12 dev eth1
+            down ip route del 10.40.0.0/16
+        """)
+
+    @expectedException(LabConfigError)
+    def test_up_on_another_interface(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            address 10.10.0.6
+            netmask 255.255.0.0
+            up ip route add 10.20.0.0/16 via 10.10.0.12 dev wlan0
+            down ip route del 10.40.0.0/16
+        """)
+
+    @expectedException(LabConfigError)
+    def test_up_gibberish(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            address 10.10.0.6
+            netmask 255.255.0.0
+            up gobbity gobbity bop bop
+            down ip route del 10.40.0.0/16
+        """)
+
+    @expectedException(LabConfigError)
+    def test_up_with_down_okay(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            address 10.10.0.6
+            netmask 255.255.0.0
+            up ip route add 10.20.0.0/16 via 10.100.0.12 dev eth1
+            down ip route del 10.20.0.0/16
+        """)
+
+    @expectedException(LabConfigError)
+    def test_multiple_addresses(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            address 10.10.0.6
+            netmask 255.255.0.0
+            address 10.10.0.7
+        """)
+
+    @expectedException(LabConfigError)
+    def test_multiple_netmasks(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            address 10.10.0.6
+            netmask 255.255.0.0
+            netmask 255.255.0.0
+        """)
+
+    @expectedException(LabConfigError)
+    def test_bad_gateway(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            address 10.10.0.6
+            netmask 255.255.0.0
+            gateway 10.20.0.1
+        """)
+
+    def test_good_gateway(self):
+        self.parse("""
+            auto eth1
+            iface eth1 inet static
+            address 10.10.0.6
+            netmask 255.255.0.0
+            gateway 10.10.0.1
+        """)
+
+
+
+
+def read_hosts(lab_dir, routers):
+    ifaces = "etc/network/interfaces"
+    for rname, r in routers.items():
+        print rname
+        iface_file = os.path.join(lab_dir, rname, ifaces)
+        ips, netmasks = read_networks(iface_file)
+        print ips
+        for iface, ifd in r.items():
+            if not 'ip' in ifd:
+                print iface, ifd
+                if not iface in ips:
+                    raise LabConfigError("No %s in %s" % (iface, iface_file))
+                set_ip(r, iface, ips[iface], netmasks[iface])
+                print iface, ifd
+
+
+def write_dot(gv_file, routers):
+    nets = [net['net'] for r in routers.values() for net in r.values()]
+    with open(gv_file, "w") as gv:
+        print >>gv, "graph G {"
+        print >>gv, 'edge [len=1.5];' # for neato
+        print >>gv, 'node [shape=diamond, color="green"];'
+        for r in sorted(routers.keys()):
+            if len(routers[r]) > 1:
+                print >>gv, r + ' [color="blue"];'
+            else:
+                print >>gv, r + ";"
+        print >>gv, 'node [shape=ellipse, color="brown"];'
+        for n in nets:
+            print >>gv, '%s [label="%s"];' % (n['name'], n['cidr'])
+        for r in sorted(routers.keys()):
+            for i, ifd in routers[r].items():
+                print >>gv, '%s -- %s [label="%s: %s", color="gray"];' % (r, ifd['net']['name'], i, ifd['ip'])
+        print >>gv, "}"
+
+
+def main():
+    def usage():
+        print >>sys.stderr, "Usage:", os.path.basename(sys.argv[0]), "lab_dir gv_file"
+
+    if len(sys.argv) != 3:
+        usage()
+        sys.exit(1)
+    else:
+        try:
+            routers = read_lab(sys.argv[1])
+            read_hosts(sys.argv[1], routers)
+            write_dot(sys.argv[2], routers)
+        except LabConfigError, e:
+            print >>sys.stderr, e
+            sys.exit(2)
+
+
+if __name__ == '__main__':
+    main()
