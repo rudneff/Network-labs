@@ -6,6 +6,6 @@ iptables -X
 
 # ethX connects router to "Internet" via NAT
 
-#iptables -t nat -A POSTROUTING -o ethX -j MASQUERADE
+iptables -t nat -A POSTROUTING -o eth3 -j MASQUERADE
 
 exit 0

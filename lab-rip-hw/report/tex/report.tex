@@ -3,7 +3,7 @@
 \input{header.tex}
 
 \title{Отчёт по лабораторной работе \\ <<Динамическая IP-маршрутизация>>}
-\author{(Здесь писать Ф.~И.~О)}
+\author{Руднев Дмитрий Николаевич}
 
 \begin{document}
 
@@ -24,50 +24,92 @@
 \label{fig:network}
 \end{figure}
 
-Перечень узлов, на которых используется динамическая IP-маршрутизация: ...
+Перечень узлов, на которых используется динамическая IP-маршрутизация: r1, r2, r3, r4, r5
 
 
 \subsection{Назначение IP-адресов}
 
-Ниже приведён файл сетевой настройки  маршрутизатора (указать, какого).
+Ниже приведён файл сетевой настройки  маршрутизатора r1.
 
 \begin{Verbatim}
-Сюда нужно поместить характерный /etc/network/interfaces маршрутизатора
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet static
+address 10.0.20.1
+netmask 255.255.255.0
+
+auto eth1
+iface eth1 inet static
+address 10.0.10.1
+netmask 255.255.255.0
 \end{Verbatim}
 
-Ниже приведён файл сетевой настройки рабочей станции (указать, какой).
+Ниже приведён файл сетевой настройки рабочей станции wsp1.
 
 \begin{Verbatim}
-Сюда нужно поместить характерный /etc/network/interfaces рабочей станции
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet static
+address 10.0.10.3
+netmask 255.255.255.0
+gateway 10.0.10.1
 \end{Verbatim}
 
 
 
 \subsection{Настройка протокола RIP}
 
-Ниже приведен файл \Code{/etc/quagga/ripd.conf} маршрутизатора (указать, какого).
+Ниже приведен файл \Code{/etc/quagga/ripd.conf} маршрутизатора r1.
 
 \begin{Verbatim}
-Сюда нужно поместить конфигурацию ripd
+! Этот настройки, касающиеся протокола RIP.
+router rip
+
+! Раскомментируйте ниже все интерфейсы, подключённые
+! к сетям с другими маршрутизаторами.
+network eth0
+network eth1
+! network eth2
+
+! Уменьшаем значения всех таймеров для ускорения опытов.
+! Рассылка: 10 сек., устаревание: 60 cек., сборка мусора: 120 сек.
+timers basic 10 60 120
+
+! Следующие две строчки заставляют маршрутизатор
+! добавлять в сообщения протокола RIP все известные ему маршруты.
+redistribute kernel
+!redistribute connected
+
+! Это имя файла журнала службы RIP.
+! Его содержимое можно изучить в случае неполадок
+log file /var/log/quagga/ripd.log
 \end{Verbatim}
+
 
 
 Ниже приведен файл \Code{/etc/quagga/ripd.conf} рабочий станции, связанной с несколькими маршрутизаторами (указать, какой).
 
 \begin{Verbatim}
-Сюда нужно поместить конфигурацию ripd
+Такой нет
 \end{Verbatim}
 
 
 \section{Проверка настройки протокола RIP}
 
-Вывод \textbf{traceroute} от узла такого-то до такого-то при нормальной работе сети.
+Вывод \textbf{traceroute} от узла r4 до wsp1 при нормальной работе сети.
 
 \begin{Verbatim}
-Сюда нужно поместить вывод traceroute.
+r4:~# traceroute 10.0.10.3
+traceroute to 10.0.10.3 (10.0.10.3), 64 hops max, 40 byte packets
+ 1  10.0.30.1 (10.0.30.1)  8 ms  0 ms  0 ms
+ 2  10.0.10.3 (10.0.10.3)  31 ms  1 ms  1 ms
 \end{Verbatim}
 
-Вывод \textbf{traceroute} от узла такого-то до внешнего IP (195.19.38.2 сгодится).
+Вывод \textbf{traceroute} от узла такого-т до внешнего IP (195.19.38.2 сгодится).
 
 \begin{Verbatim}
 Сюда нужно поместить вывод traceroute.
