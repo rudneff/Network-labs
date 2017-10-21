@@ -182,7 +182,7 @@ default via 192.168.1.1 dev eth2
 \section{Расщепленный горизонт и испорченные обратные обновления}
 
 Поместить сюда вывод сообщения одного и того же маршрутизатор с включенным расщ. горизонтом, с включенными испорченными обновлениями, с отключённым расщ. гор.
-
+\begin{Verbatim}
 Enabled split horizon
 IP (tos 0x0, ttl 1, id 0, offset 0, flags [DF], proto UDP (17), length 112) 10.0.40.2.520 > 224.0.0.9.520: 
         RIPv2, Response, length: 84, routes: 4
@@ -214,7 +214,7 @@ IP (tos 0x0, ttl 1, id 0, offset 0, flags [DF], proto UDP (17), length 152) 10.0
 	  AFI: IPv4:       10.0.30.0/24, tag 0x0000, metric: 1, next-hop: self
 	  AFI: IPv4:       10.0.40.0/24, tag 0x0000, metric: 16, next-hop: self
 	  AFI: IPv4:     192.168.1.0/24, tag 0x0000, metric: 1, next-hop: self
-
+\end{Verbatim}
 
 
 Объяснить разницу.
