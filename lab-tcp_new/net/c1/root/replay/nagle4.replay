@@ -1,0 +1,12 @@
+# testing nagle algorithm
+# (Same as nagle2, only segment size is made small to theoretically allow collapsing segments on retransmit)
+# The goal is to show that second segment is not send until the first is acked.
+# Assuming mss ~1450
+/etc/delay 600
+send 600
+wait 1
+send 500
+# waiting for a bit so that leftover data will not be transmitted by socket closing
+wait 3000
+# restoring...
+/etc/delay 0

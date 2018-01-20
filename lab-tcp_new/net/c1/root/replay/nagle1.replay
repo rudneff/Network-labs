@@ -1,0 +1,8 @@
+# testing nagle algorithm
+# The goal is to show that second segment is sent only upon ack.
+# Assuming mss ~1450
+send 1300
+wait 1
+send 1200
+# waiting for a bit so that leftover data will not be transmitted by socket closing
+wait 3000

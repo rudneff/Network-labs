@@ -1,0 +1,22 @@
+# testing nagle algorithm
+# (Same as nagle2, only we aim to increase cwnd to more than 2 segments first)
+# The goal is to show that second segment is not send until the first is acked, even with large cwnd.
+# Assuming mss ~1450
+/etc/delay 0
+# warmup
+send 1401
+wait 1
+send 1402
+wait 1
+send 1403
+wait 500
+# warmup ends
+# now cwnd should be at least 4 segments!
+/etc/delay 600
+send 1300
+wait 1
+send 1200
+# waiting for a bit so that leftover data will not be transmitted by socket closing
+wait 3000
+# restoring...
+/etc/delay 0

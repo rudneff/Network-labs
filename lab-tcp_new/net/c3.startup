@@ -1,0 +1,3 @@
+service networking restart
+/etc/delay
+/etc/rc.local

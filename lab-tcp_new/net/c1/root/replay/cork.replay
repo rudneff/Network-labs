@@ -1,0 +1,9 @@
+# testing TCP_CORK
+# assuming MSS ~1450
+tcp_cork 1
+send 900
+wait 15
+send 900
+# waiting for a bit so that leftover data will be
+# transmitted by timer, not by socket closing
+wait 3000

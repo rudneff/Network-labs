@@ -1,0 +1,14 @@
+# testing TCP_NODELAY
+# without sleeps between calls to 'send'.
+# The goal is to detect the moment when consecutive calls to send
+# start buffering.
+tcp_nodelay 1
+send 100
+send 200
+send 300
+# ok, now cwnd is filled up.
+send 123
+send 456
+# waiting for a bit so that leftover data will be
+# transmitted by timer, not by socket closing
+wait 3000

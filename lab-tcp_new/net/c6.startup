@@ -1,0 +1,2 @@
+service networking restart
+service inetd restart

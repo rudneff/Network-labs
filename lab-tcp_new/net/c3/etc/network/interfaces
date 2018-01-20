@@ -1,0 +1,17 @@
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet static
+address 10.20.0.2
+netmask 255.255.0.0
+mtu 1492
+gateway 10.20.0.1
+
+auto eth1
+iface eth1 inet static
+address 10.30.0.1
+netmask 255.255.0.0
+up ip r add 10.50.0.0/16 via 10.30.0.2 dev eth1
+down ip r del 10.50.0.0/16
+mtu 576

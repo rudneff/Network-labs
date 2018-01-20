@@ -1,0 +1,3 @@
+service networking restart
+service inetd restart
+/etc/delay

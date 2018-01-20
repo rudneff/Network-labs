@@ -1,0 +1,18 @@
+# simple replay to test the parser
+tcp_cork 1
+send 123
+wait 10
+send 321
+tcp_cork 0
+send 213
+wait 10
+# and let's check nodelay in action...
+# setting eth0 delay to 100 ms
+delay 100
+tcp_nodelay 1
+send 3
+wait 0
+send 4
+wait 0
+tcp_nodelay 0
+goto 2

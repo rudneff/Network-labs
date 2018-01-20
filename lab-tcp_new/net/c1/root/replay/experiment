@@ -1,0 +1,28 @@
+#!/bin/bash
+REPLAY="${1}.replay"
+LOG="logs/${1}.log"
+
+if [ ! -f $REPLAY ]
+then
+    echo "Usage: ./experiment <experiment_name>"
+    echo "Ex.: ./experiment cork"
+    echo "     will run ./replay cork.replay"
+    echo "     and store dmesg log in logs/cork.log"
+    exit 1
+fi
+
+dmesg -c > /dev/null
+./replay $REPLAY
+if [[ $? -ne 0 ]]
+then
+    exit 1
+fi
+
+echo "Saving log $LOG"
+echo "========================" > $LOG
+echo "$REPLAY" >> $LOG
+echo "========================" >> $LOG
+cat ${1}.replay >> $LOG
+echo "========================" >> $LOG
+dmesg -c >> logs/${1}.log
+echo "========================" >> $LOG

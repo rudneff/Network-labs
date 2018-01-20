@@ -1,0 +1,11 @@
+#!/bin/bash
+
+/etc/firewall
+
+nth=10
+
+[[ -z $1 ]] || nth=${1}
+
+echo "I will drop every $nth packet (counting from 1)."
+
+iptables -A FORWARD -m statistic --mode nth --every $nth --packet 0 -j DROP
